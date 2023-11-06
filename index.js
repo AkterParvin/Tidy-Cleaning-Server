@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 require('dotenv').config();
 const cookieParser = require('cookie-parser');
@@ -36,6 +36,7 @@ async function run() {
         await client.connect();
         const usersCollection = client.db('tidyDB').collection('users');
         const serviceCollection = client.db('tidyDB').collection('services');
+        const bookingCollection = client.db('tidyDB').collection('bookings');
 
 
 
@@ -75,6 +76,37 @@ async function run() {
             const result = await serviceCollection.insertOne(service);
             res.send(result);
         })
+
+        app.get('/services/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await serviceCollection.findOne(query);
+            res.send(result);
+        })
+
+
+
+        // CRUD for bookingCollection 
+        // app.get('/bookings', async (req, res) => {
+        //     const result = await bookingCollection.find().toArray();
+        //     res.send(result);
+        // })
+        app.get('/bookings', async (req, res) => {
+            console.log(req.query.email);
+            let query = {};
+            if (req.query?.email) {
+                query={email:req.query.email}
+            }
+            const result = await bookingCollection.find(query).toArray();
+            res.send(result);
+        })
+        app.post('/bookings', async (req, res) => {
+            const booking = req.body;
+            console.log(booking);
+            const result = await bookingCollection.insertOne(booking);
+            res.send(result);
+        })
+
 
 
         // Send a ping to confirm a successful connection
