@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
 const cookieParser = require('cookie-parser');
 
@@ -11,7 +11,10 @@ const port = process.env.port || 3000;
 
 
 // middleware
-app.use(cors());
+app.use(cors({
+    origin: ['http://localhost:5173/', "http://localhost:5173"],
+    credentials: true
+}));
 app.use(express.json());
 app.use(cookieParser())
 
@@ -30,6 +33,27 @@ const client = new MongoClient(uri, {
     }
 });
 
+// middlewares 
+const logger = async (req, res, next) => {
+    console.log('log Info:',req.method,req.originalUrl)
+    next();
+}
+
+const verifyToken = async (req, res, next) => {
+    const token = req.cookies?.token;
+    if (!token) {
+        return res.status(401).send({message:'unauthorized access'})
+    }
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+            return res.status(401).send({ message: 'unauthorized action' })
+        }
+        req.user = decoded;
+        next();
+    }
+    )
+}
+
 async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
@@ -38,6 +62,38 @@ async function run() {
         const serviceCollection = client.db('tidyDB').collection('services');
         const bookingCollection = client.db('tidyDB').collection('bookings');
 
+
+
+        // auth related CRUD 
+        app.post('/jwt', async (req, res) => {
+            const user = req.body;
+            console.log(user);
+            const token = jwt.sign(user,
+                process.env.ACCESS_TOKEN_SECRET,
+                { expiresIn: "12h" });
+
+            res
+                .cookie('token', token, {
+                    httpOnly: true,
+                    secure: true,
+                    sameSite: 'none'
+                })
+                .send({ success: true });
+        });
+
+        // app.post('/logout', async (req, res) => {
+        //     const user = req.user;
+        //     console.log('logging out user', user);
+        //     res
+        //         .clearCookie('token', { maxAge: 0 })
+        //         .send({ success: true })
+        // })
+
+        app.post('/logout', async (req, res) => {
+            const user = req.user;
+            console.log('logging out user', user);
+            res.clearCookie('token', { maxAge: 0 }).send({ success: true });
+        })
 
 
         // userCollection read 
@@ -65,7 +121,7 @@ async function run() {
         })
 
         // service collection data
-        app.get('/services', async (req, res) => {
+        app.get('/services',logger, async (req, res) => {
             const cursor = serviceCollection.find();
             const services = await cursor.toArray();
             res.send(services);
@@ -73,6 +129,7 @@ async function run() {
 
         app.post('/services', async (req, res) => {
             const service = req.body;
+            service.status = 'Pending';
             const result = await serviceCollection.insertOne(service);
             res.send(result);
         })
@@ -91,11 +148,16 @@ async function run() {
         //     const result = await bookingCollection.find().toArray();
         //     res.send(result);
         // })
-        app.get('/bookings', async (req, res) => {
-            console.log(req.query.email);
+        app.get('/bookings',verifyToken, async (req, res) => {
+            console.log("Token owner info:", req.user);
+            if (req.user.email !== req.query.email){
+                return res.status(403).send({ message: 'unauthorized access' })
+          }
             let query = {};
             if (req.query?.email) {
-                query={email:req.query.email}
+                query = { email: req.query.email }
+            } else if (req.query.provider_email) {
+                query = { provider_email: req.query.provider_email }
             }
             const result = await bookingCollection.find(query).toArray();
             res.send(result);
@@ -104,6 +166,27 @@ async function run() {
             const booking = req.body;
             console.log(booking);
             const result = await bookingCollection.insertOne(booking);
+            res.send(result);
+        })
+
+        app.delete('/bookings/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await bookingCollection.deleteOne(query);
+            res.send(result);
+        });
+
+        app.patch('/bookings/:id', async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) }
+            const updateBooking = req.body;
+            const updateDoc = {
+                $set: {
+                    status: updateBooking.status
+                },
+            }
+            console.log(updateBooking);
+            const result = await bookingCollection.updateOne(filter, updateDoc);
             res.send(result);
         })
 
