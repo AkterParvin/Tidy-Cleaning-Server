@@ -12,7 +12,12 @@ const port = process.env.port || 3000;
 
 // middleware
 app.use(cors({
-    origin: [ "http://localhost:5173"],
+    origin: [
+        'https://food-and-taste-d6f3f.web.app',
+        'https://food-and-taste-d6f3f.firebaseapp.com/?_gl=1*13zuaxi*_ga*OTI0OTAxMjM2LjE2OTc5MDU0MzQ.*_ga_CW55HF8NVT*MTY5OTQ0NjA4MC40LjEuMTY5OTQ1MDY3Ny40My4wLjA.',
+        "http://localhost:5174"
+
+    ],
     credentials: true
 }));
 app.use(express.json());
@@ -42,7 +47,7 @@ const logger = async (req, res, next) => {
 const verifyToken = async (req, res, next) => {
     const token = req.cookies?.token;
     if (!token) {
-        return res.status(401).send({message:'unauthorized access'})
+        return res.status(401).send({ message: 'unauthorized access' })
     }
     jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
         if (err) {
@@ -52,8 +57,9 @@ const verifyToken = async (req, res, next) => {
         next();
     }
     )
-   
+
 }
+
 
 async function run() {
     try {
@@ -63,7 +69,7 @@ async function run() {
         const serviceCollection = client.db('tidyDB').collection('services');
         const bookingCollection = client.db('tidyDB').collection('bookings');
 
-
+      
 
         // auth related CRUD 
         app.post('/jwt', async (req, res) => {
@@ -76,7 +82,8 @@ async function run() {
             res
                 .cookie('token', token, {
                     httpOnly: true,
-                    secure: true,
+                    secure: process.env.ACCESS_TOKEN_SECRET === 'production',
+                    sameSite: process.env.ACCESS_TOKEN_SECRET === 'production' ? 'none' : 'strict',
                     sameSite: 'none'
                 })
                 .send({ success: true });
@@ -123,7 +130,7 @@ async function run() {
                 query = { provider_email: req.query.provider_email }
             }
             const result = await serviceCollection.find(query).toArray();
-           
+
             res.send(result);
         })
 
@@ -177,17 +184,18 @@ async function run() {
 
 
 
-       
+
         app.get('/bookings', verifyToken, async (req, res) => {
             console.log("Token owner info:", req.user);
-                if (req.user.email !== req.query.email){
-                    return res.status(403).send({ message: 'unauthorized access' })
-              }
+
             let query = {};
             if (req.query?.email) {
                 query = { email: req.query.email }
             } else if (req.query.provider_email) {
                 query = { provider_email: req.query.provider_email }
+            }
+            if (req.user.email !== req.query.email && req.user.email !== req.query.provider_email) {
+                return res.status(403).send({ message: 'unauthorized access' })
             }
             const result = await bookingCollection.find(query).toArray();
             res.send(result);
