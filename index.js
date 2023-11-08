@@ -12,7 +12,7 @@ const port = process.env.port || 3000;
 
 // middleware
 app.use(cors({
-    origin: ['http://localhost:5173/', "http://localhost:5173"],
+    origin: [ "http://localhost:5173"],
     credentials: true
 }));
 app.use(express.json());
@@ -35,7 +35,7 @@ const client = new MongoClient(uri, {
 
 // middlewares 
 const logger = async (req, res, next) => {
-    console.log('log Info:',req.method,req.originalUrl)
+    console.log('log Info:', req.method, req.originalUrl)
     next();
 }
 
@@ -52,6 +52,7 @@ const verifyToken = async (req, res, next) => {
         next();
     }
     )
+   
 }
 
 async function run() {
@@ -81,13 +82,6 @@ async function run() {
                 .send({ success: true });
         });
 
-        // app.post('/logout', async (req, res) => {
-        //     const user = req.user;
-        //     console.log('logging out user', user);
-        //     res
-        //         .clearCookie('token', { maxAge: 0 })
-        //         .send({ success: true })
-        // })
 
         app.post('/logout', async (req, res) => {
             const user = req.user;
@@ -121,10 +115,16 @@ async function run() {
         })
 
         // service collection data
-        app.get('/services',logger, async (req, res) => {
-            const cursor = serviceCollection.find();
-            const services = await cursor.toArray();
-            res.send(services);
+        app.get('/services', async (req, res) => {
+            let query = {};
+            if (req.query?.email) {
+                query = { email: req.query.email }
+            } else if (req.query.provider_email) {
+                query = { provider_email: req.query.provider_email }
+            }
+            const result = await serviceCollection.find(query).toArray();
+           
+            res.send(result);
         })
 
         app.post('/services', async (req, res) => {
@@ -141,18 +141,48 @@ async function run() {
             res.send(result);
         })
 
+        app.delete('/services/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await serviceCollection.deleteOne(query);
+            res.send(result);
+        });
+
+        app.put('/services/:id', async (req, res) => {
+            const id = req.params.id;
+            const updatedService = req.body;
+            const filter = { _id: new ObjectId(id) };
+            const options = { upsert: true };
+            const service = {
+                $set: {
+                    service_name: updatedService.service_name,
+                    service_img: updatedService.service_img,
+                    title: updatedService.title,
+                    description: updatedService.description,
+                    provider_name: updatedService.provider_name,
+                    provider_email: updatedService.provider_email,
+                    provider_img: updatedService.provider_img,
+                    time: updatedService.time,
+                    price: updatedService.price,
+                    area: updatedService.area,
+                    service_overview: updatedService.service_overview,
+                    thumbnail: updatedService.thumbnail
+                }
+            };
+            console.log(service)
+            const result = await serviceCollection.updateOne(filter, service, options);
+            res.send(result);
+
+        })
 
 
-        // CRUD for bookingCollection 
-        // app.get('/bookings', async (req, res) => {
-        //     const result = await bookingCollection.find().toArray();
-        //     res.send(result);
-        // })
-        app.get('/bookings',verifyToken, async (req, res) => {
+
+       
+        app.get('/bookings', verifyToken, async (req, res) => {
             console.log("Token owner info:", req.user);
-            if (req.user.email !== req.query.email){
-                return res.status(403).send({ message: 'unauthorized access' })
-          }
+                if (req.user.email !== req.query.email){
+                    return res.status(403).send({ message: 'unauthorized access' })
+              }
             let query = {};
             if (req.query?.email) {
                 query = { email: req.query.email }
